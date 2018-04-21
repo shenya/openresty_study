@@ -13,6 +13,8 @@ CORE_DEPS="src/core/nginx.h \
            src/core/ngx_log.h \
            src/core/ngx_palloc.h \
            src/core/ngx_array.h \
+           src/core/pri_test.h\
+           src/core/moon_db.c\
            src/core/ngx_list.h \
            src/core/ngx_hash.h \
            src/core/ngx_buf.h \
@@ -54,6 +56,8 @@ CORE_SRCS="src/core/nginx.c \
            src/core/ngx_log.c \
            src/core/ngx_palloc.c \
            src/core/ngx_array.c \
+           src/core/pri_test.c\
+           src/core/moon_db.c\
            src/core/ngx_list.c \
            src/core/ngx_hash.c \
            src/core/ngx_buf.c \
