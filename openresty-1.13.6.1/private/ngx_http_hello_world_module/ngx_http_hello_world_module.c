@@ -71,12 +71,13 @@ ngx_module_t ngx_http_hello_world_module = {
 
 typedef struct {
     ngx_str_t name;
+    ngx_str_t db_request_data;
 } ngx_http_extern_request_mysql_ctx_t;
 
 static void extern_db_request_post_handler(ngx_http_request_t *r)
 {
     ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0,
-                                "%s: %d",__FUNCTION__, r->headers_out.status); 
+                                "%s: status[%d]",__FUNCTION__, r->headers_out.status); 
 
     if (r->headers_out.status != NGX_HTTP_OK)
     {
@@ -84,20 +85,22 @@ static void extern_db_request_post_handler(ngx_http_request_t *r)
         return;
     }
 
-    //ngx_http_extern_request_mysql_ctx_t *my_ctx = ngx_http_get_module_ctx(r,
-    //        ngx_http_hello_world_module);
+    ngx_http_extern_request_mysql_ctx_t *my_ctx = ngx_http_get_module_ctx(r,
+            ngx_http_hello_world_module);
+
+#if 0
     ngx_str_t output_format = ngx_string("hello world");
 
     int bodylen = output_format.len;
     r->headers_out.content_length_n = bodylen;
+#endif
+    int bodylen = my_ctx->db_request_data.len;
+    r->headers_out.content_length_n = bodylen;
 
     ngx_buf_t *b = ngx_create_temp_buf(r->pool,bodylen);
-    ngx_snprintf(b->pos, bodylen, (char *)output_format.data);
+    ngx_snprintf(b->pos, bodylen, (char *)my_ctx->db_request_data.data);
     b->last = b->pos + bodylen;
     b->last_buf = 1;
-
-    ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0,
-                                "%s: %d",__FUNCTION__, r->headers_out.status); 
 
     ngx_chain_t out;
     out.buf = b;
@@ -105,26 +108,18 @@ static void extern_db_request_post_handler(ngx_http_request_t *r)
 
     static ngx_str_t type = ngx_string("text/plain; charset=GBK");
     r->headers_out.content_type= type;
-    r->headers_out.status =NGX_HTTP_OK;
-
-    ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0,
-                                "2%s: %d",__FUNCTION__, r->headers_out.status); 
+    r->headers_out.status =NGX_HTTP_OK; 
 
     r->connection->buffered |= NGX_HTTP_WRITE_BUFFERED;
     ngx_int_t ret = ngx_http_send_header(r);
     ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0,
-                            "%s2-1: %d",__FUNCTION__, ret);
+            "%s: send header ret[%d]", __FUNCTION__, ret);
     ret = ngx_http_output_filter(r,&out);
-    
+
     ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0,
-                            "%s3-2: %d",__FUNCTION__, ret);
-    ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0,
-                                "3%s: %d",__FUNCTION__, r->headers_out.status); 
+            "%s: send body ret[%d]", __FUNCTION__, ret); 
 
     ngx_http_finalize_request(r,ret);
-
-    ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0,
-            "4%s: %d",__FUNCTION__, r->headers_out.status); 
 }
 
 static ngx_int_t extern_db_sub_req_post_handler(ngx_http_request_t *r,
@@ -144,20 +139,19 @@ static ngx_int_t extern_db_sub_req_post_handler(ngx_http_request_t *r,
     {
         int flag = 0;
         ngx_buf_t *sub_recv_buf = &r->upstream->buffer;
-#if 0
-        ngx_buf_t *sub_recv_buf = &r->upstream->buffer;
 
         response_data.data = sub_recv_buf->pos;
         response_data.len = ngx_buf_size(sub_recv_buf);
-        //response_data.len -= 20;
 
         ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0,
-                                    "data: %d, %V", response_data.len,
-                                    &response_data); 
-#endif
+                "data: %d, %V", response_data.len,
+                &response_data);
+        my_ctx->db_request_data.len = response_data.len;
+        my_ctx->db_request_data.data = response_data.data;
     }
 
     pr->write_event_handler = extern_db_request_post_handler;
+
     return NGX_OK;
 }
 
@@ -192,7 +186,7 @@ static void ngx_http_hello_world_client_body_handler_pt(ngx_http_request_t *r)
             ngx_buf_size(p_body_buf), p_body_buf->pos);
 
     ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0,
-            "receive body:%s", body_buf);
+            "main: receive body:%s", body_buf);
 
     test_mysql(1, 2, r->connection->log);
 
@@ -244,7 +238,7 @@ static void ngx_http_hello_world_client_body_handler_pt(ngx_http_request_t *r)
 
     ngx_http_request_t *sr = NULL;
     rc = ngx_http_subrequest(r, &sub_location, NULL,
-            &sr, my_sub_req, 0);
+            &sr, my_sub_req, NGX_HTTP_SUBREQUEST_IN_MEMORY);
     if (rc != NGX_OK)
     {
         return;

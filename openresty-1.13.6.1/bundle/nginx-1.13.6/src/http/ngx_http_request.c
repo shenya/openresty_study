@@ -2306,11 +2306,17 @@ ngx_http_finalize_request(ngx_http_request_t *r, ngx_int_t rc)
     ngx_http_request_t        *pr;
     ngx_http_core_loc_conf_t  *clcf;
 
+    ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0,
+        "rc: %d", rc);
+
     c = r->connection;
 
-    ngx_log_debug5(NGX_LOG_DEBUG_HTTP, c->log, 0,
+    ngx_log_debug5(NGX_LOG_EMERG, c->log, 0,
                    "http finalize request: %i, \"%V?%V\" a:%d, c:%d",
                    rc, &r->uri, &r->args, r == c->data, r->main->count);
+    ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0,
+        "sgy: http finalize request: %i,  \"%V?%V\" a:%d, c:%d",
+        rc, &r->uri, &r->args, r == c->data, r->main->count);
 
     if (rc == NGX_DONE) {
         ngx_http_finalize_connection(r);
