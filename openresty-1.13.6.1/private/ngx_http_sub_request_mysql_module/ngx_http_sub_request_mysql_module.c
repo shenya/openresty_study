@@ -118,7 +118,6 @@ static ngx_int_t extern_db_sub_req_post_handler(ngx_http_request_t *r,
 
     if (r->headers_out.status == NGX_HTTP_OK)
     {
-        int flag = 0;
         ngx_buf_t *sub_recv_buf = &r->upstream->buffer;
 
         response_data.data = sub_recv_buf->pos;
@@ -139,15 +138,13 @@ static ngx_int_t extern_db_sub_req_post_handler(ngx_http_request_t *r,
 static void ngx_http_sub_request_mysql_client_body_handler_pt(ngx_http_request_t *r)
 {
     ngx_int_t rc = NGX_OK;
-    ngx_buf_t* b;
-    ngx_chain_t out[2];
     char log_buf[32] = {0};
     u_char body_buf[256] = {0};
     ngx_buf_t *p_body_buf = NULL;
     cJSON *root = NULL;
     cJSON *name = NULL;
-    char json_buf[256] = {0};
-    int db_ret = 0;
+    cJSON *command = NULL;
+    cJSON *age = NULL;
 
     ngx_http_sub_request_mysql_loc_conf_t* hlcf = NULL;
     hlcf = ngx_http_get_module_loc_conf(r, ngx_http_sub_request_mysql_module);
@@ -173,6 +170,13 @@ static void ngx_http_sub_request_mysql_client_body_handler_pt(ngx_http_request_t
     {
         return;
     }
+
+    command = cJSON_GetObjectItemCaseSensitive(root, "cmd");
+    if (NULL == command)
+    {
+        return;
+    }
+    
     name = cJSON_GetObjectItemCaseSensitive(root, "name");
     if (NULL == name)
     {
@@ -180,7 +184,9 @@ static void ngx_http_sub_request_mysql_client_body_handler_pt(ngx_http_request_t
     }
 
     ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0,
-                          "name: %s", name->valuestring);
+                          "parse cmd: %s, name: %s",
+                          command->valuestring,
+                          name->valuestring);    
 
     ngx_http_extern_request_mysql_ctx_t *my_ctx = ngx_http_get_module_ctx(r,
             ngx_http_sub_request_mysql_module);
@@ -206,15 +212,80 @@ static void ngx_http_sub_request_mysql_client_body_handler_pt(ngx_http_request_t
 
     my_sub_req->data = my_ctx;
 
-    ngx_str_t sub_prefix = ngx_string("/mysql_query?name=hello");
-    ngx_str_t sub_location;
-    sub_location.len =sub_prefix.len;
-    sub_location.data = ngx_palloc(r->pool,sub_location.len);
-    ngx_snprintf(sub_location.data, sub_location.len, "%V",
-           &sub_prefix);
+    ngx_str_t sub_uri;
+    ngx_str_t sub_args;
+
+    if (0 == ngx_strncmp(command->valuestring, "query", strlen("query")))
+    {
+        sub_uri.len = ngx_strlen("/mysql_query");
+        sub_uri.data = ngx_palloc(r->pool,sub_uri.len);
+        ngx_snprintf(sub_uri.data, sub_uri.len, "%s",
+               "/mysql_query");
+
+        sub_args.len = ngx_strlen("name=") + ngx_strlen(name->valuestring);
+        sub_args.data = ngx_palloc(r->pool,sub_args.len);
+        ngx_snprintf(sub_args.data, sub_args.len, "%s%s",
+               "name=", name->valuestring);
+    }
+    else if (0 == ngx_strncmp(command->valuestring, "add", strlen("add")))
+    {
+        age = cJSON_GetObjectItemCaseSensitive(root, "age");
+        if (NULL == age)
+        {
+            return;
+        }
+        sub_uri.len = ngx_strlen("/mysql_add");
+        sub_uri.data = ngx_palloc(r->pool,sub_uri.len);
+        ngx_snprintf(sub_uri.data, sub_uri.len, "%s",
+               "/mysql_add");
+
+        sub_args.len = ngx_strlen("name=") + ngx_strlen(name->valuestring)
+                + ngx_strlen("age=") + ngx_strlen(age->valuestring) + 1;
+        sub_args.data = ngx_palloc(r->pool,sub_args.len);
+        ngx_snprintf(sub_args.data, sub_args.len, "%s%s&%s%s",
+               "name=", name->valuestring, "age=", age->valuestring);
+    }
+    else if (0 == ngx_strncmp(command->valuestring, "delete", strlen("delete")))
+    {
+        sub_uri.len = ngx_strlen("/mysql_delete");
+        sub_uri.data = ngx_palloc(r->pool,sub_uri.len);
+        ngx_snprintf(sub_uri.data, sub_uri.len, "%s",
+               "/mysql_delete");
+
+        sub_args.len = ngx_strlen("name=") + ngx_strlen(name->valuestring);
+        sub_args.data = ngx_palloc(r->pool,sub_args.len);
+        ngx_snprintf(sub_args.data, sub_args.len, "%s%s",
+               "name=", name->valuestring);
+    }
+    else if (0 == ngx_strncmp(command->valuestring, "update", strlen("update")))
+    {
+        age = cJSON_GetObjectItemCaseSensitive(root, "age");
+        if (NULL == age)
+        {
+            return;
+        }
+        sub_uri.len = ngx_strlen("/mysql_update");
+        sub_uri.data = ngx_palloc(r->pool,sub_uri.len);
+        ngx_snprintf(sub_uri.data, sub_uri.len, "%s",
+               "/mysql_update");
+
+        sub_args.len = ngx_strlen("name=") + ngx_strlen(name->valuestring)
+                + ngx_strlen("age=") + ngx_strlen(age->valuestring) + 1;
+        sub_args.data = ngx_palloc(r->pool,sub_args.len);
+        ngx_snprintf(sub_args.data, sub_args.len, "%s%s&%s%s",
+               "name=", name->valuestring, "age=", age->valuestring);
+    }
+    else
+    {
+
+    }
+
+    ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0,
+                          "sub request uri: %V, args: %V",
+                          &sub_uri, &sub_args);
 
     ngx_http_request_t *sr = NULL;
-    rc = ngx_http_subrequest(r, &sub_location, NULL,
+    rc = ngx_http_subrequest(r, &sub_uri, &sub_args,
             &sr, my_sub_req, NGX_HTTP_SUBREQUEST_IN_MEMORY);
     if (rc != NGX_OK)
     {
