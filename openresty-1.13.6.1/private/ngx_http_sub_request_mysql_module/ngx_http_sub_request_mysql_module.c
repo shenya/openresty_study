@@ -114,7 +114,7 @@ static ngx_int_t extern_db_sub_req_post_handler(ngx_http_request_t *r,
     pr->headers_out.status = r->headers_out.status;
 
     ngx_log_error(NGX_LOG_EMERG, r->connection->log, 0,
-                                "%s: %d",__FUNCTION__, r->headers_out.status); 
+                                "%s: %d",__FUNCTION__, r->headers_out.status);
 
     if (r->headers_out.status == NGX_HTTP_OK)
     {
@@ -274,6 +274,18 @@ static void ngx_http_sub_request_mysql_client_body_handler_pt(ngx_http_request_t
         sub_args.data = ngx_palloc(r->pool,sub_args.len);
         ngx_snprintf(sub_args.data, sub_args.len, "%s%s&%s%s",
                "name=", name->valuestring, "age=", age->valuestring);
+    }
+    else if (0 == ngx_strncmp(command->valuestring, "jquery", strlen("jquery")))
+    {
+        sub_uri.len = ngx_strlen("/redis_get");
+        sub_uri.data = ngx_palloc(r->pool,sub_uri.len);
+        ngx_snprintf(sub_uri.data, sub_uri.len, "%s",
+                "/redis_get");
+
+        sub_args.len = ngx_strlen("key=") + ngx_strlen(name->valuestring);
+        sub_args.data = ngx_palloc(r->pool,sub_args.len);
+        ngx_snprintf(sub_args.data, sub_args.len, "%s%s",
+               "key=", name->valuestring);
     }
     else
     {
