@@ -351,6 +351,67 @@ static int ngx_response_info(ngx_http_request_t* r)
     return rc;
 }
 
+static int ngx_response_info_by_file(ngx_http_request_t* r, char *file_name)
+{
+    ngx_int_t rc = NGX_OK;
+    ngx_buf_t* b = NULL;
+    ngx_chain_t out;
+
+    r->headers_out.content_type.len = sizeof("application/json; charset=utf-8") - 1;
+    r->headers_out.content_type.data = (u_char*)"application/json; charset=utf-8";
+
+    b = ngx_pcalloc(r->pool, sizeof(ngx_buf_t));
+    b->in_file = 1;
+    b->file = ngx_pcalloc(r->pool, sizeof(ngx_file_t));
+    b->file->fd = ngx_open_file(file_name, NGX_FILE_RDONLY | NGX_FILE_NONBLOCK,
+        NGX_FILE_OPEN, 0);
+    b->file->log = r->connection->log;
+    b->file->name.data = file_name;
+    b->file->name.len = strlen(file_name);
+    if (b->file->fd <= 0)
+    {
+        return NGX_HTTP_NOT_FOUND;
+    }
+
+    if (ngx_file_info(file_name, &b->file->info) == NGX_FILE_ERROR)
+    {
+        return NGX_HTTP_INTERNAL_SERVER_ERROR;
+    }
+
+    r->headers_out.content_length_n = b->file->info.st_size;
+    b->file_pos = 0;
+    b->file_last =b->file->info.st_size;
+
+    ngx_pool_cleanup_t *cleanup_info = ngx_pool_cleanup_add(r->pool,
+            sizeof(ngx_pool_cleanup_file_t));
+    if(NULL == cleanup_info)
+    {
+        return NGX_ERROR;
+    }
+
+    cleanup_info->handler = ngx_pool_cleanup_file;
+    ngx_pool_cleanup_file_t *cleanup_data = cleanup_info->data;
+    cleanup_data->fd = b->file->fd;
+    cleanup_data->name = b->file->name.data;
+    cleanup_data->log = r->pool->log;
+
+    out.buf = b;
+    out.next = NULL;
+
+    b->last_buf = 1;
+
+    r->headers_out.status = NGX_HTTP_OK;
+    rc = ngx_http_send_header(r);
+    if (rc == NGX_ERROR || rc > NGX_OK || r->header_only) {
+        return rc;
+    }
+
+    rc = ngx_http_output_filter(r, &out);
+    ngx_http_finalize_request(r,rc);
+
+    return rc;
+}
+
 static ngx_int_t ngx_http_sub_request_mysql_handler(ngx_http_request_t* r) {
     ngx_int_t rc = NGX_OK;
     int no_content_flag = 0;
@@ -382,7 +443,8 @@ static ngx_int_t ngx_http_sub_request_mysql_handler(ngx_http_request_t* r) {
                           "no content flag:%d", no_content_flag);
     if (no_content_flag)
     {
-        return ngx_response_info(r);
+        //return ngx_response_info(r);
+        return ngx_response_info_by_file(r, "/tmp/responsejson.txt");
     }
 
     rc = ngx_http_read_client_request_body(r,
