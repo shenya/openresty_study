@@ -12,12 +12,14 @@ typedef struct
 typedef struct {
     size_t                     rest;
     ngx_http_request_t        *request;
-    ngx_str_t                  key;
 } ngx_http_up_other_ctx_t;
 
-static ngx_int_t ngx_http_upstream_oth_handler(ngx_http_request_t* r);
+typedef struct {
+    int type;
+    int length;
+} up_other_msg_header_t;
 
-static char* ngx_http_upstream_oth(ngx_conf_t* cf, ngx_command_t* cmd, void* conf);  
+static ngx_int_t ngx_http_upstream_oth_handler(ngx_http_request_t* r);
   
 static void* ngx_http_upstream_oth_create_loc_conf(ngx_conf_t* cf);  
   
@@ -69,7 +71,6 @@ ngx_module_t ngx_http_upstream_oth_module = {
 static ngx_int_t
 ngx_http_up_other_create_request(ngx_http_request_t *r)
 {
-    size_t                          len = 0;
     ngx_buf_t                      *b;
     ngx_chain_t                    *cl;
 
@@ -115,14 +116,32 @@ static ngx_int_t
 ngx_http_up_other_process_header(ngx_http_request_t *r)
 {
     ngx_http_upstream_t            *u = NULL;
+    up_other_msg_header_t *msg_hdr = NULL;
+    ngx_buf_t               *b = NULL;
 
     u = r->upstream;
 
     ngx_log_debug0(NGX_LOG_DEBUG_HTTP, r->connection->log, 0,
                    "process header for up other");
 
-    u->headers_in.content_length_n = 8;
-    
+    b = &u->buffer;
+
+    if (ngx_buf_size(b) < sizeof(up_other_msg_header_t))
+    {
+        return NGX_AGAIN;
+    }
+
+    msg_hdr = (up_other_msg_header_t *)u->buffer.start;
+    if (1 == msg_hdr->type)
+    {
+        r->headers_out.content_type.len = sizeof("application/json; charset=utf-8") - 1;
+        r->headers_out.content_type.data = (u_char*)"application/json; charset=utf-8";
+    }
+
+    u->headers_in.content_length_n = msg_hdr->length;
+
+    u->buffer.pos = u->buffer.pos + sizeof(up_other_msg_header_t);
+
     u->headers_in.status_n = 200;
     u->state->status = 200;
 
@@ -339,16 +358,7 @@ static void* ngx_http_upstream_oth_create_loc_conf(ngx_conf_t* cf) {
 
 static char* ngx_http_upstream_oth_merge_loc_conf(ngx_conf_t* cf, void* parent, void* child)   
 {
-    ngx_http_upstream_oth_loc_conf_t* prev = parent;
-    ngx_http_upstream_oth_loc_conf_t* conf = child;
-    return NGX_CONF_OK;
-}
-
-static char* ngx_http_upstream_oth(ngx_conf_t* cf, ngx_command_t* cmd, void* conf)   
-{  
-    ngx_http_core_loc_conf_t* clcf;
-    clcf = ngx_http_conf_get_module_loc_conf(cf, ngx_http_core_module);
-    clcf->handler = ngx_http_upstream_oth_handler;
-    ngx_conf_set_str_slot(cf, cmd, conf);
+    //ngx_http_upstream_oth_loc_conf_t* prev = parent;
+    //ngx_http_upstream_oth_loc_conf_t* conf = child;
     return NGX_CONF_OK;
 }
