@@ -208,7 +208,6 @@ ngx_http_up_other_filter_init(void *data)
 
     return NGX_OK;
 }
-
 static ngx_int_t
 ngx_http_up_other_filter(void *data, ssize_t bytes)
 {
@@ -222,6 +221,10 @@ ngx_http_up_other_filter(void *data, ssize_t bytes)
     u = ctx->request->upstream;
     b = &u->buffer;
 
+    ngx_log_error(NGX_LOG_EMERG, ctx->request->connection->log, 0,
+        "%s: %O, rest: %z, bytes: %d", __FUNCTION__,
+        u->length, ctx->rest, bytes);
+
     if (u->length == (ssize_t) ctx->rest) {
         u->length -= bytes;
         ctx->rest -= bytes;
@@ -229,6 +232,10 @@ ngx_http_up_other_filter(void *data, ssize_t bytes)
         if (u->length == 0) {
             u->keepalive = 1;
         }
+
+        ngx_log_error(NGX_LOG_EMERG, ctx->request->connection->log, 0,
+            "%s:return ok %O, rest: %z, bytes: %d", __FUNCTION__,
+            u->length, ctx->rest, bytes);
 
         return NGX_OK;
     }
@@ -248,7 +255,7 @@ ngx_http_up_other_filter(void *data, ssize_t bytes)
     *ll = cl;
 
     last = b->last;
-    cl->buf->pos = last;
+    cl->buf->pos = b->last;
     b->last += bytes;
     cl->buf->last = b->last;
     cl->buf->tag = u->output.tag;
@@ -257,11 +264,8 @@ ngx_http_up_other_filter(void *data, ssize_t bytes)
                    "memcached filter bytes:%z size:%z length:%O rest:%z",
                    bytes, b->last - b->pos, u->length, ctx->rest);
 
-    last += (size_t) (u->length);
 
-    ctx->rest -= b->last - last;
-    b->last = last;
-    cl->buf->last = last;
+    ctx->rest -= bytes;
     u->length = ctx->rest;
 
     if (u->length == 0) {
